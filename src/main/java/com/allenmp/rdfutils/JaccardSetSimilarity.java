@@ -3,7 +3,6 @@ package com.allenmp.rdfutils;
 import java.util.HashSet;
 import java.util.Set;
 
-import org.apache.jena.sparql.sse.ItemTransformer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 	
