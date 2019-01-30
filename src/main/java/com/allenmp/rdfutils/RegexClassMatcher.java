@@ -5,6 +5,7 @@ import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.OutputStream;
+import java.util.ArrayList;
 import java.util.Objects;
 import java.util.regex.Pattern;
 
@@ -12,6 +13,12 @@ import org.apache.jena.ontology.OntClass;
 import org.apache.jena.ontology.OntModel;
 import org.apache.jena.ontology.OntProperty;
 import org.apache.jena.ontology.SomeValuesFromRestriction;
+import org.apache.jena.query.Query;
+import org.apache.jena.query.QueryExecution;
+import org.apache.jena.query.QueryExecutionFactory;
+import org.apache.jena.query.QueryFactory;
+import org.apache.jena.query.QuerySolution;
+import org.apache.jena.query.ResultSet;
 import org.apache.jena.rdf.model.ModelFactory;
 import org.apache.jena.rdf.model.Property;
 import org.apache.jena.rdf.model.RDFList;
@@ -25,6 +32,7 @@ import org.apache.jena.vocabulary.XSD;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import com.google.common.collect.ArrayListMultimap;
 import com.google.common.collect.Multimap;
 
 /**
@@ -57,7 +65,8 @@ public class RegexClassMatcher {
 
     public static void main(String[] args) {
 	RegexClassMatcher m = new RegexClassMatcher();
-	m.potentialAssertions("mpallen@vt.edu");
+	Multimap<Resource, Property> results = m.potentialAssertions("mpallen@vt.edu");
+	LOG.info("Potential Usage: {}", results);
     }
 
     private OntModel ont;
@@ -77,10 +86,10 @@ public class RegexClassMatcher {
 	ont.add(person, RDFS.subClassOf, definePatternRestriction(email, EMAIL_ADDRESS.pattern()));
 	Property notificationAddress = ont.createProperty(NS + "notificationAddress");
 	ont.add(person, RDFS.subClassOf, definePatternRestriction(notificationAddress, EMAIL_ADDRESS.pattern()));
-	
+
 	OntClass computer = ont.createClass(NS + "Computer");
 	ont.add(computer, RDFS.subClassOf, definePatternRestriction(email, EMAIL_ADDRESS.pattern()));
-	
+
 	Property identifier = ont.createProperty(NS + "obscureId");
 	ont.add(computer, RDFS.subClassOf, definePatternRestriction(identifier, OBSCURE_ID.pattern()));
 
@@ -120,27 +129,54 @@ public class RegexClassMatcher {
      * @param value
      * @return
      */
-    public Multimap<OntClass, OntProperty> potentialAssertions(String value) {
+    public Multimap<Resource, Property> potentialAssertions(String value) {
 	Objects.requireNonNull(value);
+
+	Multimap<Resource, Property> results = ArrayListMultimap.create();
 	
-	StmtIterator stmts = ont.listStatements(null, xsdPattern, (RDFNode) null);
-	while (stmts.hasNext()) {
-	    
-	    Statement s = stmts.next();
-	    LOG.info("FoundPattern: {}", s);
-	    
-	    String pattern = s.getObject().asLiteral().getString();
-	    LOG.info("Pattern: {}", pattern);
-	    
-	    if (value.matches(pattern)) {
-		LOG.info("Matched: value={}", value);
+	StringBuilder sb = new StringBuilder();
+	sb.append("PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#> ");
+	sb.append("PREFIX owl: <http://www.w3.org/2002/07/owl#> ");
+	sb.append("PREFIX xsd: <http://www.w3.org/2001/XMLSchema#> ");
+	sb.append("PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>");
+	sb.append("SELECT ?class ?predicate ?pattern WHERE {");
+	sb.append("?class rdfs:subClassOf ?b1 . ");
+	sb.append("FILTER (!isBlank(?class)) ");
+	sb.append("?b1 a owl:Restriction . ");
+	sb.append("?b1 owl:onProperty ?predicate . ");
+	sb.append("?b1 owl:someValuesFrom ?b2 .");
+	sb.append("?b2 a rdfs:Datatype . ");
+	sb.append("?b2 owl:withRestrictions ?list .");
+	sb.append("?list rdf:rest*/rdf:first ?b3 . ");
+	sb.append("?b3 xsd:pattern ?pattern . ");
+	sb.append("}");
+	String queryStr = sb.toString();
+
+	Query query = QueryFactory.create(queryStr);
+	try (QueryExecution qexec = QueryExecutionFactory.create(query, ont)) {
+	    ResultSet rs = qexec.execSelect();
+	    while (rs.hasNext()) {
+		QuerySolution qs = rs.nextSolution();
+		RDFNode cls = qs.get("class");
+		RDFNode predicate = qs.get("predicate");
+		RDFNode pattern = qs.get("pattern");
+		LOG.info("PotentialMatch: class={} predicate={} pattern={}", cls, predicate, pattern);
+		
+		// Test the pattern
+		if (value.matches(pattern.asLiteral().getString())) {
+		    LOG.info("Matched: value={}", value);
+		    
+		    String clsUri = cls.asResource().getURI();
+		    Resource clsResource = ont.getOntClass(clsUri);
+		    String propUri = predicate.asResource().getURI();
+		    Property property = ont.getProperty(propUri);
+		    LOG.info("Class={} Property={}", clsResource, property);
+		    results.put(clsResource, property);
+		}
 	    }
-	    
 	}
-	
-	
-	
-	return null;
+
+	return results;
     }
 
 }
