@@ -63,12 +63,6 @@ public class RegexClassMatcher {
     // Imaginary obscure computer identifier (NN-AAANN-A)
     public static final Pattern OBSCURE_ID = Pattern.compile("\\d{2}-[A-Z]{3}\\d{2}-[A-Z]");
 
-    public static void main(String[] args) {
-	RegexClassMatcher m = new RegexClassMatcher();
-	Multimap<Resource, Property> results = m.potentialAssertions("mpallen@vt.edu");
-	LOG.info("Potential Usage: {}", results);
-    }
-
     private OntModel ont;
 
     public RegexClassMatcher() {
