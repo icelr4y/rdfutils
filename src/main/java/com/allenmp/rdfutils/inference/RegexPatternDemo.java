@@ -9,16 +9,21 @@ import java.util.regex.Pattern;
 import org.apache.jena.ontology.OntClass;
 import org.apache.jena.ontology.OntModel;
 import org.apache.jena.ontology.SomeValuesFromRestriction;
+import org.apache.jena.rdf.model.Literal;
 import org.apache.jena.rdf.model.Model;
 import org.apache.jena.rdf.model.ModelFactory;
 import org.apache.jena.rdf.model.Property;
 import org.apache.jena.rdf.model.RDFList;
 import org.apache.jena.rdf.model.RDFNode;
 import org.apache.jena.rdf.model.Resource;
+import org.apache.jena.rdf.model.StmtIterator;
 import org.apache.jena.reasoner.ReasonerRegistry;
+import org.apache.jena.vocabulary.OWL;
 import org.apache.jena.vocabulary.RDF;
 import org.apache.jena.vocabulary.RDFS;
 import org.apache.jena.vocabulary.XSD;
+
+import com.allenmp.rdfutils.Prefixes;
 
 /**
  * Example of programmatically defining regular expression patterns.
@@ -50,27 +55,35 @@ public class RegexPatternDemo {
 	// Define that a Person is something that has an SSN with string
 	// matching a certain pattern
 	OntClass person = ont.createClass("http://www.example.org/schema#Person");
+	ont.add(person, RDFS.subClassOf, OWL.Thing);
 	Property ssn = ont.createDatatypeProperty("http://www.example.org/schema#socialSecurityNumber");
 	String ssnPattern = "^\\d{3}-\\d{2}-\\d{4}$";
-
+	
 	Resource restriction = createPatternRestriction(ssn, Pattern.compile(ssnPattern));
 	ont.add(person, RDFS.subClassOf, restriction);
+	
+	Property hasKey = ont.createProperty("http://www.w3.org/2002/07/owl#hasKey");
+	ont.add(OWL.Thing, hasKey, ont.createList(new RDFNode[] { ssn }));
+//	ont.add(OWL.Thing, hasKey, ssn);
 
 	ont.write(System.out, "TTL");
 
 	// Infer that something is an ex:Person because it has property matching
 	// SSN
 	Model instances = ModelFactory.createDefaultModel();
-	Resource i = ont.createResource("http://www.example.org/instances#Johnny");
-	instances.add(i, ssn, "111-11-1111");
+	Resource johnny = ont.createResource("http://www.example.org/instances#Johnny");
+	instances.add(johnny, RDF.type, person);
+	Literal ssnValue = ont.createLiteral("111-11-1111");
+	instances.add(johnny, ssn, ssnValue);
 
+	
+	Resource person2 = ont.createResource("http://www.example.org/instances#Person2");
+	instances.add(person2, RDF.type, person);
+	instances.add(person2, ssn, ssnValue);
+	
+	
 	Model infModel = ModelFactory.createInfModel(ReasonerRegistry.getOWLReasoner(), ont, instances);
-	infModel.setNsPrefix("ex", "http://www.example.org/schema#");
-	infModel.setNsPrefix("inst", "http://www.example.org/instances#");
-	infModel.setNsPrefix("owl", "http://www.w3.org/2002/07/owl#");
-	infModel.setNsPrefix("rdf", "http://www.w3.org/1999/02/22-rdf-syntax-ns#");
-	infModel.setNsPrefix("rdfs", "http://www.w3.org/2000/01/rdf-schema#");
-	infModel.setNsPrefix("xsd", "http://www.w3.org/2001/XMLSchema#");
+	infModel.setNsPrefixes(Prefixes.getNsPrefixes());
 	infModel.write(System.out, "TURTLE");
 	
 	try (Writer w = new FileWriter(new File("pattern-example.ttl"))) {
@@ -80,6 +93,11 @@ public class RegexPatternDemo {
 	    e.printStackTrace();
 	}
 
+	
+	StmtIterator s = infModel.listStatements(johnny, null, (RDFNode) null);
+	while (s.hasNext()) {
+	    System.out.println("Statement: " + s.next());
+	}
     }
 
     /**

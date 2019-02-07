@@ -2,3 +2,5 @@ target*
 model.ttl
 ont.ttl
 *-example.ttl
+*-output.ttl
+
